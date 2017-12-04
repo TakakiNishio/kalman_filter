@@ -51,9 +51,6 @@ if __name__ == '__main__':
     noise = np.random.normal(loc=mean_noize, scale=deviation_noize, size=len(y))
     observed_y = y + noise
 
-    # initialization
-    obs = observed_y
-
     start_obs = observed_y[0]
 
     n_obs = len(observed_y)
