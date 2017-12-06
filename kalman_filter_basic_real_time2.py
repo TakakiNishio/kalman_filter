@@ -12,8 +12,8 @@ class Kalman:
 
         self.prev_y = start_position
         self.dev_q = deviation_position
-        self.dev_r = deviation_noize
-        self.prev_P = start_dev
+        self.dev_r = deviation_noise
+        self.prev_P = start_deviation
         self.start_flag = False
 
     def forward(self, observation):
@@ -63,8 +63,7 @@ if __name__ == '__main__':
     y_ = [kf.forward(start_obs)]
 
     for i in range(1, n_obs):
-
-        y_.append(kf.forward(obs[i]))
+        y_.append(kf.forward(observed_y[i]))
 
     y_ = np.array(y_)
 
