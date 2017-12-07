@@ -65,12 +65,23 @@ class UKF:
         self.W = np.diag([wi for i in range(self.n)])
         self.W[0][0] = w0
 
-    def ut(self, xm, Pxx):
 
-        xm = xm[:,np.newaxis]
+    def ut(self, xm, Pxx, k):
+
+        xm_t = xm[:,np.newaxis]
         L = np.linalg.cholesky(Pxx)
 
-        X = 
+        X1 = xm
+        Xa = np.dot(np.ones((self.n,1)),xm).reshape((self.n,self.n))
+        Xb = np.sqrt(self.n+self.kappa)*L
+        X = np.hstack((X1, Xa,Xb))
+
+        Y = np.array([self.f((k)*self.dT, x) for x in X.T])
+
+        ym = (np.dot(W,Y)).sum(axis=0)
+
+        Yd = np.array([y - ym[:,np.newaxis] for y in Y])
+        Xd = np.array([x - xm[:,np.newaxis] for x in X])
 
     def forward(self, y, k):
 
