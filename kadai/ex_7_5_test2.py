@@ -16,7 +16,6 @@ class Plant:
 
     def u(self, t):
         u_ = 4.0*np.abs(signal.sawtooth(t*np.sqrt(2)))+10.0*np.sin(t)
-        #u_ = 4.0*signal.sawtooth(t*np.sqrt(2))+10.0*np.sin(t)
         return u_
 
     def dxdt(self, t, x):
@@ -49,6 +48,7 @@ class UKF:
 
         self.plant = plant
         self.f = f
+        self.h = plant.h
         self.dT = dT
         self.Q = Q
         self.R = R
@@ -66,107 +66,63 @@ class UKF:
         self.W[0][0] = w0
 
 
-    def ut(self, xm, Pxx, k):
+    def ut(self, F, xm, Pxx, k):
 
         xm_t = xm[:,np.newaxis]
+        #xm_t = xm
         L = np.linalg.cholesky(Pxx)
 
         X1 = xm
-        Xa = np.dot(np.ones((self.n,1)),xm).reshape((self.n,self.n))
+        #Xa = np.dot(np.ones((self.n,1)),xm).reshape((self.n,self.n))
+        Xa = np.dot(np.ones((self.n,1)),xm_t).reshape((self.n,self.n))
         Xb = np.sqrt(self.n+self.kappa)*L
         X = np.hstack((X1, Xa,Xb))
 
-        Y = np.array([self.f((k)*self.dT, x) for x in X.T])
+        Y = np.array([F((k)*self.dT, x) for x in X.T])
 
-        ym = (np.dot(W,Y)).sum(axis=0)
+        # print self.W.shape
+        # print Y.T.shape
 
-        Yd = np.array([y - ym[:,np.newaxis] for y in Y])
-        Xd = np.array([x - xm[:,np.newaxis] for x in X])
+        ym = (np.dot(self.W,Y.T)).sum(axis=0)
 
-    def forward(self, y, k):
+        print ym.shape
+        print xm.shape
 
-        P_ = np.zeros((self.n,self.n))
+        print Y.shape
+        print X.shape
 
-        ## calculation of sigma points
-        x_sigma = []
-        x_sigma.append(self.prev_xh)
+        Yd = np.array([y - ym[:,np.newaxis] for y in Y.T])
+        Xd = np.array([x - xm[:,np.newaxis] for x in X.T])
 
-        n_plus_kappa = self.n + self.kappa
-        n_kappa_square_root = np.sqrt(n_plus_kappa)
-        prev_P_col =  np.linalg.cholesky(self.prev_P)
+        print Yd.shape
+        print Xd.shape
 
-        print "aaa"
-        print prev_P_col
+        Pyy = np.dot(Yd.T,self.W,Yd)
+        Pxy = np.dot(Xd.T,self.W,Xd)
 
-        for i in range(self.n):
-            x_sigma.append(self.prev_xh + (n_kappa_square_root * prev_P_col[:,i]))
+        return ym, Pyy, Pxy
 
-        for i in range(self.n):
-            x_sigma.append(self.prev_xh - (n_kappa_square_root * prev_P_col[:,i]))
 
-        w0 = self.kappa/n_plus_kappa
-        wi = 1.0/(2.0*n_plus_kappa)
+    def forward(self, y, k, xhat, P):
 
-        x_sigma_ = []
+        xhat = xhat[:,np.newaxis]
+        # y = y[:,np.newaxis]
 
-        ## prediction step
-        for i in range(self.n*2):
-            xxx = self.f((k-1)*self.dT, x_sigma[i].reshape(self.n))
-            x_sigma_.append(xxx)
+        xhatm, Pm = self.ut(self.f, xhat, P, k)
 
-        xh_ = w0 * x_sigma_[0]
-        for i in range(1,self.n*2):
-            xh_ += wi * x_sigma_[i]
+        Pm = Pm + np.dot(self.B,self.Q,self.B.T)
 
-        xx = (x_sigma_[0]-xh_).reshape(1, self.n)
-        xxt = xx[:,np.newaxis].reshape(self.n,1)
-        P_ = w0 * np.dot(xxt, xx) + self.Q
+        yhatm, Pyy, Pxy = self.ut(self.h, xhatm, Pm, k)
 
-        for i in range(1, self.n*2):
-            xx = (x_sigma_[i]-xh_).reshape(1, self.n)
-            xxt = xx[:,np.newaxis].reshape(self.n,1)
-            P_ += wi * np.dot(xxt, xx) + self.Q
+        G = np.dot(Pxy,np.linalg.inv(Pyy+self.R))
 
-        #* np.array(np.dot(self.B.T,self.B))[0][0]
+        xhat_new = xhatm + np.dot(G,(y-yhatm))
 
-        x_sigma_re = []
-        x_sigma_.append(xh_)
-        P_col =  np.linalg.cholesky(P_)
-        for i in range(self.n):
-            x_sigma_re.append(xh_ + n_kappa_square_root * P_col[:,i])
+        P_new = Pm - np.dot(G,Pxy)
 
-        for i in range(self.n):
-            x_sigma_re.append(xh_ - n_kappa_square_root * P_col[:,i])
+        return xhat_new, P_new
 
-        y_sigma_ = []
-        for i in range(2*self.n):
-            y_sigma_.append(self.plant.h(x_sigma_re[i]))
 
-        yh_ = w0 * y_sigma_[0]
-        for i in range(1,2*self.n):
-            yh_ += wi * y_sigma_[i]
-
-        P_yy = w0 * (y_sigma_[0] - yh_)**2
-        P_xy = w0 * (y_sigma_[0] - yh_) * (x_sigma_re[0] - xh_).reshape(1, self.n)
-
-        for i in range(1,2*self.n):
-            P_yy += wi * (y_sigma_[i]-yh_)**2
-            P_xy += wi * (y_sigma_[i]-yh_) * (x_sigma_re[i]-xh_).reshape(1, self.n)
-
-        G = (1.0/(P_yy + self.R))*P_xy
-
-        ## filtering step
-        xh = xh_ + G * (y - yh_)
-
-        self.prev_xh = xh
-        self.prev_P = P_ - np.dot(G[:,np.newaxis].reshape(self.n,1), P_xy.reshape(1,self.n))
-
-        print "bbbbbbb"
-        print self.prev_P
-
-        #time.sleep(0.5)
-        print xh.shape
-        return xh
 
 
 if __name__ == '__main__':
@@ -211,15 +167,15 @@ if __name__ == '__main__':
 
     xh[0] = [0.0, 0.0, 0.1*c]
     yh[0] = plant.h(x[0])
-    P0 = np.diag([10, 10, 10])
+    P = np.diag([10, 10, 10])
 
-    ukf = UKF(plant, f, b, dT, Q, R, xh[0], P0)
+    ukf = UKF(plant, f, b, dT, Q, R, xh[0], P)
 
     # # # time update of estimation data
     for ki in range(1,N):
     #     x[k] = plant.f(x[k-1]) + plant.b * v[k-1]
     #     y[k] = plant.h(x[k]) + w[k]
-        xh[ki] = ukf.forward(y[ki],ki)
+        xh[ki],P = ukf.forward(y[ki],ki,xh[ki-1],P)
 
     print xh.shape
 
