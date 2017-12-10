@@ -15,7 +15,8 @@ class Plant:
         self.k = k
 
     def u(self, t):
-        u_ = 4.0*np.abs(signal.sawtooth(t*np.sqrt(2)))+10.0*np.sin(t)
+        # u_ = 4.0*np.abs(signal.sawtooth(t*np.sqrt(2)))+10.0*np.sin(t)
+        u_ = 4.0*signal.sawtooth(t*np.sqrt(2.0))+10.0*np.sin(t)
         return u_
 
     def dxdt(self, t, x):
@@ -39,6 +40,7 @@ class RK4:
         k3 = self.plant.dxdt(t+(self.hv/2.0), x+(self.hv/2.0)*k2)
         k4 = self.plant.dxdt(t+self.hv, x+(self.hv*k3))
         x_new = x + (self.hv/6.0) * (k1+(2.0*k2)+(2.0*k3)+k4)
+
         return x_new
 
 
@@ -60,45 +62,109 @@ class UKF:
         self.B = B
 
         w0 = self.kappa/(self.n+self.kappa)
-        wi = 1/(self.n+self.kappa)
+        wi = 1/(2.0*(self.n+self.kappa))
 
-        self.W = np.diag([wi for i in range(self.n)])
+        self.W = np.diag([wi for i in range(2*self.n+1)])
         self.W[0][0] = w0
 
 
-    def ut(self, F, xm, Pxx, k):
+    def mapcols_f(self, F, k, X):
 
-        xm_t = xm[:,np.newaxis]
-        #xm_t = xm
+        l = len(X)
+        Y = []
+        for i in range(l):
+            print "ax"
+            print F((k-1)*self.dT, X[i])
+            Y.append(F((k-1)*self.dT, X[i]))
+
+        Y = np.array(Y)
+        return Y
+
+    def mapcols_h(self, H, k, X):
+
+        l = len(X)
+        Y = []
+        for i in range(l):
+            Y.append(H(X[i]))
+
+        Y = np.array(Y)
+        return Y
+
+
+    def minus_mat(self, A, am):
+
+        am = am[:,np.newaxis].reshape(self.n)
+        l = len(A)
+        Ad = []
+
+        for i in range(l):
+            Ad.append(A[i]-am)
+
+        Ad = np.array(Ad)
+
+        return Ad
+
+    def minus_scalar(self, V, vm):
+
+        l = len(V)
+
+        Vd = []
+        for i in range(l):
+            Vd.append(V[i]-vm)
+
+        Vd = np.array(Vd)
+
+        return Vd[:,np.newaxis]
+
+
+    def utx(self, F, xm, Pxx, k):
+
+        xm_t = xm.T
         L = np.linalg.cholesky(Pxx)
 
-        X1 = xm
-        #Xa = np.dot(np.ones((self.n,1)),xm).reshape((self.n,self.n))
         Xa = np.dot(np.ones((self.n,1)),xm_t).reshape((self.n,self.n))
         Xb = np.sqrt(self.n+self.kappa)*L
-        X = np.hstack((X1, Xa,Xb))
 
-        Y = np.array([F((k)*self.dT, x) for x in X.T])
+        X1 = Xa + Xb
+        X2 = Xa - Xb
 
-        # print self.W.shape
-        # print Y.T.shape
+        X = np.hstack((xm, X1, X2)).T
 
-        ym = (np.dot(self.W,Y.T)).sum(axis=0)
+        Y = self.mapcols_f(F,k,X)
 
-        print ym.shape
-        print xm.shape
+        ym = (np.dot(self.W,Y)).sum(axis=0)
 
-        print Y.shape
-        print X.shape
+        Yd = self.minus_mat(Y,ym)
+        Xd = self.minus_mat(X,xm)
 
-        Yd = np.array([y - ym[:,np.newaxis] for y in Y.T])
-        Xd = np.array([x - xm[:,np.newaxis] for x in X.T])
+        Pyy = np.dot(np.dot(Yd.T,self.W),Yd)
+        Pxy = np.dot(np.dot(Xd.T,self.W),Yd)
 
-        print Yd.shape
-        print Xd.shape
+        return ym[:,np.newaxis], Pyy, Pxy
 
-        Pyy = np.dot(Yd.T,self.W,Yd)
-        Pxy = np.dot(Xd.T,self.W,Xd)
+
+    def uty(self, H, xm, Pxx, k):
+
+        xm_t = xm.T
+        L = np.linalg.cholesky(Pxx)
+
+        Xa = np.dot(np.ones((self.n,1)),xm_t).reshape((self.n,self.n))
+        Xb = np.sqrt(self.n+self.kappa)*L
+
+        X1 = Xa + Xb
+        X2 = Xa - Xb
+
+        X = np.hstack((xm, X1, X2)).T
+
+        Y = self.mapcols_h(H,k,X)
+
+        ym = (np.dot(self.W,Y)).sum(axis=0)
+
+        Yd = self.minus_scalar(Y,ym)
+        Xd = self.minus_mat(X,xm)
+
+        Pyy = np.dot(np.dot(Yd.T,self.W),Yd)
+        Pxy = np.dot(np.dot(Xd.T,self.W),Yd)
 
         return ym, Pyy, Pxy
 
@@ -106,23 +172,21 @@ class UKF:
     def forward(self, y, k, xhat, P):
 
         xhat = xhat[:,np.newaxis]
-        # y = y[:,np.newaxis]
 
-        xhatm, Pm = self.ut(self.f, xhat, P, k)
+        xhatm, Pm, Pxy_ = self.utx(self.f, xhat, P, k)
 
-        Pm = Pm + np.dot(self.B,self.Q,self.B.T)
+        # Pm = Pm + np.dot(self.B,self.Q,self.B.T)
+        Pm = Pm + self.B*self.Q*self.B
 
-        yhatm, Pyy, Pxy = self.ut(self.h, xhatm, Pm, k)
+        yhatm, Pyy, Pxy = self.uty(self.h, xhatm, Pm, k)
 
-        G = np.dot(Pxy,np.linalg.inv(Pyy+self.R))
+        G = Pxy/(Pyy+self.R)
 
-        xhat_new = xhatm + np.dot(G,(y-yhatm))
+        xhat_new = xhatm + G*(y-yhatm)
 
-        P_new = Pm - np.dot(G,Pxy)
+        P_new = Pm - np.dot(G,Pxy.T)
 
-        return xhat_new, P_new
-
-
+        return xhat_new.reshape(self.n), P_new
 
 
 if __name__ == '__main__':
@@ -166,16 +230,19 @@ if __name__ == '__main__':
     yh = np.zeros(N)
 
     xh[0] = [0.0, 0.0, 0.1*c]
-    yh[0] = plant.h(x[0])
-    P = np.diag([10, 10, 10])
+    yh[0] = plant.h(xh[0])
+    P = np.diag([10.0, 10.0, 10.0])
 
     ukf = UKF(plant, f, b, dT, Q, R, xh[0], P)
 
     # # # time update of estimation data
-    for ki in range(1,N):
+    for ki in range(1,280):
     #     x[k] = plant.f(x[k-1]) + plant.b * v[k-1]
     #     y[k] = plant.h(x[k]) + w[k]
-        xh[ki],P = ukf.forward(y[ki],ki,xh[ki-1],P)
+        xh[ki], P = ukf.forward(y[ki],ki,xh[ki-1],P)
+        print
+        print ki
+        print P
 
     print xh.shape
 
@@ -186,7 +253,6 @@ if __name__ == '__main__':
     ax3 = plt.subplot2grid((3,1), (2,0))
 
     lines1, = ax1.plot(t,x[:,0], 'r', label='True Value')
-    # lines1, = ax1.plot(t,y, 'r', label='True Value')
     lines2, = ax1.plot(t,xh[:,0], 'b', label='Estimated Value')
     #ax1.set_ylim((-15, 15))
     ax1.set_xlabel(r'$t$ [s]', fontname='serif', fontsize=23)

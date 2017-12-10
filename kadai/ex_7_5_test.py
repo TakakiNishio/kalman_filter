@@ -9,19 +9,19 @@ import time
 
 class Plant:
 
-    def __init__(self, c, m, k):
-        self.c = c
+    def __init__(self, m, k):
         self.m = m
         self.k = k
 
     def u(self, t):
-        u_ = 4.0*np.abs(signal.sawtooth(t*np.sqrt(2)))+10.0*np.sin(t)
-        #u_ = 4.0*signal.sawtooth(t*np.sqrt(2))+10.0*np.sin(t)
+        #u_ = 4.0*np.abs(signal.sawtooth(t*np.sqrt(2)))+10.0*np.sin(t)
+        u_ = 4.0*signal.sawtooth(t*np.sqrt(2))+10.0*np.sin(t)
         return u_
 
     def dxdt(self, t, x):
         dxdt_ = np.array([x[1], (-x[2]*x[1]/self.m)-(self.k*x[0]/self.m), 0.0]) \
                 + np.array([0.0, 1.0/self.m, 0.0])*self.u(t)
+
         return dxdt_
 
     def h(self, x):
@@ -135,7 +135,7 @@ class UKF:
         xh = xh_ + G * (y - yh_)
 
         self.prev_xh = xh
-        self.prev_P = P_ - np.dot(G[:,np.newaxis].reshape(self.n,1), P_xy.reshape(1,self.n))
+        self.prev_P = P_ - np.dot(G[:,np.newaxis].reshape(self.n,1), P_xy.reshape(1,self.n)).T
 
         print "bbbbbbb"
         print self.prev_P
@@ -161,7 +161,7 @@ if __name__ == '__main__':
     N = 2000
     t = dT * np.array(range(N))
 
-    plant = Plant(c,m,k)
+    plant = Plant(m,k)
     R = 0.01
 
     f = RK4(plant)
@@ -186,7 +186,7 @@ if __name__ == '__main__':
     yh = np.zeros(N)
 
     xh[0] = [0.0, 0.0, 0.1*c]
-    yh[0] = plant.h(x[0])
+    yh[0] = plant.h(xh[0])
     P0 = np.diag([10, 10, 10])
 
     ukf = UKF(plant, f, b, dT, Q, R, xh[0], P0)
