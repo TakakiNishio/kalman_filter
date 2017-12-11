@@ -71,8 +71,8 @@ class UKF:
         n_kappa_square_root = np.sqrt(n_plus_kappa)
         prev_P_col =  np.linalg.cholesky(self.prev_P)
 
-        print "aaa"
-        print prev_P_col
+        # print "aaa"
+        # print prev_P_col
 
         for i in range(self.n):
             x_sigma.append(self.prev_xh + (n_kappa_square_root * prev_P_col[:,i]))
@@ -87,20 +87,27 @@ class UKF:
 
         ## prediction step
         for i in range(self.n*2):
-            xxx = self.f((k-1)*self.dT, x_sigma[i].reshape(self.n))
-            x_sigma_.append(xxx)
+            x_sigma_.append(self.f((k-1)*self.dT, x_sigma[i].reshape(self.n)))
 
         xh_ = w0 * x_sigma_[0]
+
         for i in range(1,self.n*2):
             xh_ += wi * x_sigma_[i]
 
+        # print "bababababa"
+        # print x_sigma_[0][:,np.newaxis].shape
+
+        # xx = (x_sigma_[0]-xh_).reshape(1, self.n)
+        # xxt = xx[:,np.newaxis].reshape(self.n,1)
         xx = (x_sigma_[0]-xh_).reshape(1, self.n)
-        xxt = xx[:,np.newaxis].reshape(self.n,1)
+        xxt = xx.T
         P_ = w0 * np.dot(xxt, xx) + self.Q
 
         for i in range(1, self.n*2):
+            # xx = (x_sigma_[i]-xh_).reshape(1, self.n)
+            # xxt = xx[:,np.newaxis].reshape(self.n,1)
             xx = (x_sigma_[i]-xh_).reshape(1, self.n)
-            xxt = xx[:,np.newaxis].reshape(self.n,1)
+            xxt = xx.T
             P_ += wi * np.dot(xxt, xx) + self.Q
 
         #* np.array(np.dot(self.B.T,self.B))[0][0]
@@ -122,11 +129,11 @@ class UKF:
         for i in range(1,2*self.n):
             yh_ += wi * y_sigma_[i]
 
-        P_yy = w0 * (y_sigma_[0] - yh_)**2
+        P_yy = w0 * ((y_sigma_[0] - yh_)**2)
         P_xy = w0 * (y_sigma_[0] - yh_) * (x_sigma_re[0] - xh_).reshape(1, self.n)
 
         for i in range(1,2*self.n):
-            P_yy += wi * (y_sigma_[i]-yh_)**2
+            P_yy += wi * ((y_sigma_[i]-yh_)**2)
             P_xy += wi * (y_sigma_[i]-yh_) * (x_sigma_re[i]-xh_).reshape(1, self.n)
 
         G = (1.0/(P_yy + self.R))*P_xy
@@ -135,13 +142,18 @@ class UKF:
         xh = xh_ + G * (y - yh_)
 
         self.prev_xh = xh
-        self.prev_P = P_ - np.dot(G[:,np.newaxis].reshape(self.n,1), P_xy.reshape(1,self.n)).T
+        self.prev_P = P_ - np.dot(G[:,np.newaxis].reshape(self.n,1), P_xy.reshape(1,self.n))
 
-        print "bbbbbbb"
-        print self.prev_P
+        # print "bbbbbbb"
+        # print self.prev_P
+
+        print "GGGGGGGGGG"
+        print G
+        print y
+        print yh_
 
         #time.sleep(0.5)
-        print xh.shape
+        # print xh.shape
         return xh
 
 
@@ -162,7 +174,7 @@ if __name__ == '__main__':
     t = dT * np.array(range(N))
 
     plant = Plant(m,k)
-    R = 0.01
+    R = 0.1
 
     f = RK4(plant)
 
@@ -176,7 +188,9 @@ if __name__ == '__main__':
         x[ki] = f((ki-1)*dT,x[ki-1])
         y0[ki] = plant.h(x[ki])
 
-    w = np.random.normal(size=N)*np.sqrt(R)
+    #w = np.random.normal(size=N)*np.sqrt(R)
+    # w = np.random.normal(size=N,scale=np.sqrt(R))
+    w = np.random.normal(size=N,scale=R)
 
     y = y0 + w
 
@@ -187,7 +201,7 @@ if __name__ == '__main__':
 
     xh[0] = [0.0, 0.0, 0.1*c]
     yh[0] = plant.h(xh[0])
-    P0 = np.diag([10, 10, 10])
+    P0 = np.diag([10.0, 10.0, 10.0])
 
     ukf = UKF(plant, f, b, dT, Q, R, xh[0], P0)
 
@@ -197,7 +211,7 @@ if __name__ == '__main__':
     #     y[k] = plant.h(x[k]) + w[k]
         xh[ki] = ukf.forward(y[ki],ki)
 
-    print xh.shape
+    # print xh.shape
 
     # graph plot
     fig = plt.figure(figsize=(16,9))

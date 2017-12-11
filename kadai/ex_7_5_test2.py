@@ -73,12 +73,11 @@ class UKF:
         l = len(X)
         Y = []
         for i in range(l):
-            print "ax"
-            print F((k-1)*self.dT, X[i])
             Y.append(F((k-1)*self.dT, X[i]))
 
         Y = np.array(Y)
         return Y
+
 
     def mapcols_h(self, H, k, X):
 
@@ -93,7 +92,7 @@ class UKF:
 
     def minus_mat(self, A, am):
 
-        am = am[:,np.newaxis].reshape(self.n)
+        am = am.reshape(self.n)
         l = len(A)
         Ad = []
 
@@ -103,6 +102,7 @@ class UKF:
         Ad = np.array(Ad)
 
         return Ad
+
 
     def minus_scalar(self, V, vm):
 
@@ -122,7 +122,7 @@ class UKF:
         xm_t = xm.T
         L = np.linalg.cholesky(Pxx)
 
-        Xa = np.dot(np.ones((self.n,1)),xm_t).reshape((self.n,self.n))
+        Xa = np.dot(np.ones((self.n,1)),xm_t)
         Xb = np.sqrt(self.n+self.kappa)*L
 
         X1 = Xa + Xb
@@ -148,7 +148,7 @@ class UKF:
         xm_t = xm.T
         L = np.linalg.cholesky(Pxx)
 
-        Xa = np.dot(np.ones((self.n,1)),xm_t).reshape((self.n,self.n))
+        Xa = np.dot(np.ones((self.n,1)),xm_t)
         Xb = np.sqrt(self.n+self.kappa)*L
 
         X1 = Xa + Xb
@@ -180,13 +180,14 @@ class UKF:
 
         yhatm, Pyy, Pxy = self.uty(self.h, xhatm, Pm, k)
 
-        G = Pxy/(Pyy+self.R)
+        G = (1.0/(Pyy+self.R))*Pxy
 
         xhat_new = xhatm + G*(y-yhatm)
 
-        P_new = Pm - np.dot(G,Pxy.T)
+        P_new = Pm - np.dot(G, Pxy.T)
 
         return xhat_new.reshape(self.n), P_new
+
 
 
 if __name__ == '__main__':
@@ -206,7 +207,7 @@ if __name__ == '__main__':
     t = dT * np.array(range(N))
 
     plant = Plant(c,m,k)
-    R = 0.01
+    R = 0.1
 
     f = RK4(plant)
 
@@ -220,7 +221,9 @@ if __name__ == '__main__':
         x[ki] = f((ki-1)*dT,x[ki-1])
         y0[ki] = plant.h(x[ki])
 
-    w = np.random.normal(size=N)*np.sqrt(R)
+    #w = np.random.normal(size=N)*np.sqrt(R)
+    # w = np.random.normal(size=N,scale=np.sqrt(R))
+    w = np.random.normal(size=N,scale=R)
 
     y = y0 + w
 
@@ -236,15 +239,11 @@ if __name__ == '__main__':
     ukf = UKF(plant, f, b, dT, Q, R, xh[0], P)
 
     # # # time update of estimation data
-    for ki in range(1,280):
+    for ki in range(1,N):
     #     x[k] = plant.f(x[k-1]) + plant.b * v[k-1]
     #     y[k] = plant.h(x[k]) + w[k]
         xh[ki], P = ukf.forward(y[ki],ki,xh[ki-1],P)
-        print
         print ki
-        print P
-
-    print xh.shape
 
     # graph plot
     fig = plt.figure(figsize=(16,9))
@@ -253,7 +252,7 @@ if __name__ == '__main__':
     ax3 = plt.subplot2grid((3,1), (2,0))
 
     lines1, = ax1.plot(t,x[:,0], 'r', label='True Value')
-    lines2, = ax1.plot(t,xh[:,0], 'b', label='Estimated Value')
+    lines2, = ax1.plot(t,xh[:,1], 'b', label='Estimated Value')
     #ax1.set_ylim((-15, 15))
     ax1.set_xlabel(r'$t$ [s]', fontname='serif', fontsize=23)
     ax1.set_ylabel(r'position', fontname='serif', fontsize=23)
