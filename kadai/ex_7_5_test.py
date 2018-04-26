@@ -71,9 +71,6 @@ class UKF:
         n_kappa_square_root = np.sqrt(n_plus_kappa)
         prev_P_col =  np.linalg.cholesky(self.prev_P)
 
-        # print "aaa"
-        # print prev_P_col
-
         for i in range(self.n):
             x_sigma.append(self.prev_xh + (n_kappa_square_root * prev_P_col[:,i]))
 
@@ -94,23 +91,23 @@ class UKF:
         for i in range(1,self.n*2):
             xh_ += wi * x_sigma_[i]
 
-        # print "bababababa"
-        # print x_sigma_[0][:,np.newaxis].shape
-
         # xx = (x_sigma_[0]-xh_).reshape(1, self.n)
         # xxt = xx[:,np.newaxis].reshape(self.n,1)
         xx = (x_sigma_[0]-xh_).reshape(1, self.n)
         xxt = xx.T
-        P_ = w0 * np.dot(xxt, xx) + self.Q
+        P_ = w0 * np.dot(xxt, xx)
 
         for i in range(1, self.n*2):
             # xx = (x_sigma_[i]-xh_).reshape(1, self.n)
             # xxt = xx[:,np.newaxis].reshape(self.n,1)
             xx = (x_sigma_[i]-xh_).reshape(1, self.n)
             xxt = xx.T
-            P_ += wi * np.dot(xxt, xx) + self.Q
+            P_ += wi * np.dot(xxt, xx)
 
-        #* np.array(np.dot(self.B.T,self.B))[0][0]
+        P_ += self.Q
+
+        # print "aaaaaaaaaa"
+        # print np.array(np.dot(self.B.T,self.B))[0][0]
 
         x_sigma_re = []
         x_sigma_.append(xh_)
@@ -142,18 +139,8 @@ class UKF:
         xh = xh_ + G * (y - yh_)
 
         self.prev_xh = xh
-        self.prev_P = P_ - np.dot(G[:,np.newaxis].reshape(self.n,1), P_xy.reshape(1,self.n))
+        self.prev_P = P_ - np.dot(G.reshape(self.n,1), P_xy.reshape(1,self.n))
 
-        # print "bbbbbbb"
-        # print self.prev_P
-
-        print "GGGGGGGGGG"
-        print G
-        print y
-        print yh_
-
-        #time.sleep(0.5)
-        # print xh.shape
         return xh
 
 
@@ -170,7 +157,7 @@ if __name__ == '__main__':
     dT = 0.01
 
     # input settings
-    N = 2000
+    N = 10000
     t = dT * np.array(range(N))
 
     plant = Plant(m,k)
